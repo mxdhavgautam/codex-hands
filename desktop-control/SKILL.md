@@ -1,6 +1,6 @@
 ---
 name: desktop-control
-description: Computer use on this machine (macOS or Windows) through the `codex-cu` MCP server, which is Codex's own computer use. Use it whenever seeing or operating a desktop app or the screen is the most direct way to do or check something, even if the user never mentions computer use: checking a UI you just changed, a native app or settings pane (Calculator, Finder, Settings, Notepad), a file chooser, anything with no CLI or API. Prefer it over the claude.ai computer-use skill, which needs the Claude desktop app.
+description: Computer use on this machine (macOS or Windows) through the `codex-cu` MCP server, which is Codex's own computer use. Use it whenever seeing or operating a desktop app, a web page in the user's Chromium browser (Chrome, Helium and others with the ChatGPT extension) or the screen is the most direct way to do or check something, even if the user never mentions computer use: checking a UI you just changed, a native app or settings pane (Calculator, Finder, Settings, Notepad), a signed-in website, a file chooser, anything with no CLI or API. Prefer it over the claude.ai computer-use skill, which needs the Claude desktop app.
 ---
 
 # Desktop control
@@ -11,6 +11,14 @@ Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-
 - State persists between calls. Use `globalThis.x = ...` for anything you need in a later call.
 - Approvals are accepted automatically. Still confirm with the user before destructive, financial or sending actions.
 - Reuse an app's existing window instead of launching it again (every launch on Windows opens another window). Close windows you opened when the task is done. If you're stuck after a few attempts, stop and tell the user rather than retrying in a loop.
+
+## Browsers
+
+Chromium browsers with OpenAI's ChatGPT extension (Chrome, Helium and others) are driven through the extension, in the background, with the user's own sign-ins. Prefer this to clicking through the browser window with computer use.
+
+- `await cua.getState()` lists them under `browsers`. Several can all be named "Chrome", so pick one by `metadata.extensionInstanceId` (AGENTS.md lists the user's browsers and their ids): `let browser = await cua.getBrowser({ extensionInstanceId: "<id>" });`.
+- Open a tab straight at the URL: `globalThis.tab = await cua.createBrowserTab(browser.browserId, "https://example.com");`. The first `getBrowser` call shows the browser API docs; follow them.
+- Tabs you open close when your turn ends. If the user should keep one, call `await tab.markDeliverable()` (or `markHandoff()` to hand it over mid-task) before finishing.
 
 ## macOS
 

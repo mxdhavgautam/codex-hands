@@ -2,13 +2,15 @@
 
 Give Claude Code, Cursor's `cursor-agent` and opencode the same computer use Codex has, on macOS and Windows.
 
-The Codex app ships a capable computer use engine: background control on macOS, Windows UI Automation and screenshots, and a JavaScript tool that can chain many actions in one call. `codex-hands` exposes that engine to any MCP-capable agent as the `codex-cu` server, plus a skill that tells agents when and how to use it.
+The Codex app ships a capable computer use engine: background control on macOS (even while the Mac is locked), Windows UI Automation and screenshots, Chromium browsers through OpenAI's ChatGPT extension, and a JavaScript tool that can chain many actions in one call. `codex-hands` exposes that engine to any MCP-capable agent as the `codex-cu` server, plus a skill that tells agents when and how to use it.
 
 ```
 desktop-control/
-  cu-mcp.mjs   the codex-cu MCP server (a small proxy around Codex's engine)
-  SKILL.md     agent instructions
-  README.md    requirements, install, checks, how it works, debugging
+  cu-mcp.mjs         the codex-cu MCP server (a small proxy around Codex's engine)
+  turn-ended.mjs     tells the macOS helper a turn ended, so it can lock the Mac again
+  turn-end-hook.mjs  Claude Code Stop hook: ends that session's turn, releasing its tabs
+  SKILL.md           agent instructions
+  README.md          requirements, install, checks, how it works, debugging
 ```
 
 ## Quick start

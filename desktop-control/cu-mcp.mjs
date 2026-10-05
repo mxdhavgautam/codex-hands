@@ -14,9 +14,10 @@
 // Windows it must be spawned from the interactive desktop session, not from SSH.
 
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -57,7 +58,7 @@ const parseJson = (text) => {
 const server = parseJson(readFileSync(join(pluginRoot, version, ".mcp.json"), "utf8"))?.mcpServers?.cua_repl;
 if (!server) fail(`cua_repl missing from ${version}/.mcp.json`);
 
-const env = { ...process.env, ...server.env, CUA_REPL_ENABLED_SURFACES: "computer" };
+const env = { ...process.env, ...server.env };
 if (process.platform === "win32") {
   // The Windows plugin talks to a pipe owned by the running Codex app and sandboxes the
   // kernel through the Codex CLI, which fails outside the app. Without these, sky spawns its
@@ -86,35 +87,60 @@ const forward = (stream, line) => stream.write(`${line}\n`);
 
 const send = (stream, message) => stream.write(`${JSON.stringify(message)}\n`);
 
-// Codex tags every tool call with its thread and turn. The macOS computer use helper needs that to
-// unlock a locked Mac for a task, and locks it again when told the thread's turn ended. Calls share
-// a turn until none has been in flight for TURN_IDLE_MS, or until cua_repl exits; then
-// turn-ended.mjs tells the helper (under the bundled node, which it trusts). The helper releases a
-// thread's unlock without looking at the turn, so each turn gets its own thread id,
-// "<session id>/<turn number>": a late turn end can't release the next turn's unlock.
-const TURN_IDLE_MS = 120_000;
+// Codex tags every tool call with its thread and turn, and tells cua_repl and the computer use
+// helper when a turn ends. The helper unlocks a locked Mac for a turn and locks it again at its end
+// (told by turn-ended.mjs, under the bundled node, which it trusts); the browser side releases the
+// turn's tabs (told through cua_repl's hidden turn_ended tool). This proxy ends a turn when:
+// - the harness's Stop hook runs turn-end-hook.mjs, which connects to this session's control
+//   socket (Claude Code; the precise signal);
+// - no tool call has been in flight for TURN_IDLE_MS, for harnesses without a hook (off once a
+//   hook has been seen; long, since it closes the turn's tabs);
+// - cua_repl exits.
+// The helper releases a thread's unlock without looking at the turn, so each turn gets its own
+// thread id, "<session id>/<proxy pid>/<turn number>": a late turn end can't release the next
+// turn's unlock, and two proxies for one session can't release each other's.
+const TURN_IDLE_MS = 900_000;
 const turnEndedScript = join(dirname(fileURLToPath(import.meta.url)), "turn-ended.mjs");
 const bundledNode = env.NODE_REPL_NODE_PATH ?? server.command;
-// Claude Code gives MCP servers its session id, so the helper's unlock records point at the real
-// session. cursor-agent and opencode expose none to MCP servers, so they get a random one.
-const sessionId = process.env.CLAUDE_CODE_SESSION_ID || randomUUID();
+// Claude Code gives MCP servers its session id, so the records point at the real session and its
+// Stop hook can find this proxy. cursor-agent and opencode expose none, so they get a random one.
+const harnessSessionId = process.env.CLAUDE_CODE_SESSION_ID;
+const sessionId = harnessSessionId || randomUUID();
 let turnNumber = 1;
-let threadId = `${sessionId}/${turnNumber}`;
+let threadId = `${sessionId}/${process.pid}/${turnNumber}`;
 let turnId = randomUUID();
 let turnActive = false;
 let turnTimer;
+let hookSeen = false;
+let endAfterCalls = false;
+const pendingCleanups = new Set();
+let drainWaiters = []; // resolved when no tool call is in flight
 const callsInFlight = new Set();
+// Internal request id -> resolver, for the proxy's own turn_ended calls (hidden from the client).
+const internalCalls = new Map();
 
+// Returns a promise that settles once cua_repl has handled turn_ended (or right away if it can't).
 const endTurn = () => {
-  if (!turnActive) return;
+  if (!turnActive) return Promise.resolve();
   turnActive = false;
+  endAfterCalls = false;
   clearTimeout(turnTimer);
+  let browserCleanup = Promise.resolve();
+  if (child.exitCode === null && child.signalCode === null && child.stdin.writable) {
+    const id = `codex-cu-turn-ended-${randomUUID()}`;
+    browserCleanup = new Promise((resolve) => internalCalls.set(id, resolve));
+    pendingCleanups.add(browserCleanup);
+    browserCleanup.then(() => pendingCleanups.delete(browserCleanup));
+    const args = { hook_event_name: "Stop", session_id: threadId, turn_id: turnId };
+    send(child.stdin, { jsonrpc: "2.0", id, method: "tools/call", params: { name: "turn_ended", arguments: args } });
+  }
   if (process.platform === "darwin" && existsSync(turnEndedScript)) {
     // Detached so it still reaches the helper when the proxy is exiting.
     spawn(bundledNode, [turnEndedScript, threadId, turnId], { detached: true, stdio: "ignore" }).on("error", () => {}).unref();
   }
-  threadId = `${sessionId}/${++turnNumber}`;
+  threadId = `${sessionId}/${process.pid}/${++turnNumber}`;
   turnId = randomUUID();
+  return browserCleanup;
 };
 
 // The idle clock only runs while no tool call is in flight, so a long call never loses its unlock.
@@ -126,15 +152,61 @@ const callStarted = (id) => {
 };
 const callFinished = (id) => {
   if (!callsInFlight.delete(id) || callsInFlight.size > 0) return;
+  for (const resolve of drainWaiters) resolve();
+  drainWaiters = [];
+  if (endAfterCalls) return endTurn();
   clearTimeout(turnTimer);
-  turnTimer = setTimeout(endTurn, TURN_IDLE_MS);
+  if (!hookSeen) turnTimer = setTimeout(endTurn, TURN_IDLE_MS);
 };
+const hookTurnEnded = () => {
+  hookSeen = true;
+  clearTimeout(turnTimer);
+  if (callsInFlight.size > 0) endAfterCalls = true;
+  else endTurn();
+};
+
+// The Stop hook finds this proxy by the harness session id: turn-end-hook.mjs signals every
+// "codex-cu-<hash>-<pid>" socket (or Windows pipe) for its session, so two processes sharing a
+// session each keep their own.
+if (harnessSessionId) {
+  const hash = createHash("sha256").update(harnessSessionId).digest("hex").slice(0, 16);
+  const name = `codex-cu-${hash}-${process.pid}`;
+  const controlPath = process.platform === "win32" ? `\\\\.\\pipe\\${name}` : join(tmpdir(), `${name}.sock`);
+  if (process.platform !== "win32") rmSync(controlPath, { force: true });
+  const control = createServer((socket) => socket.on("data", (data) => {
+    if (data.toString().includes("turn-ended")) hookTurnEnded();
+    socket.end();
+  }));
+  control.on("error", () => {});
+  control.listen(controlPath);
+  control.unref();
+  if (process.platform !== "win32") process.on("exit", () => rmSync(controlPath, { force: true }));
+}
 
 // The proxy's own ids always win, so the turn it ends is the turn the helper saw.
 const withTurnMetadata = (params) => {
   const turn = JSON.stringify({ session_id: threadId, turn_id: turnId });
   return { ...params, _meta: { ...params?._meta, "x-codex-turn-metadata": turn } };
 };
+
+// On disconnect or a stop signal, end the turn while cua_repl can still release its tabs, then end
+// the child's stdin so it finishes and exits, which exits the proxy; kill it if it hangs. With calls
+// still in flight, the turn ends once they finish (within the same 5 s).
+function shutDown() {
+  if (clientClosed) return;
+  clientClosed = true;
+  const cleanup = (async () => {
+    while (callsInFlight.size > 0) await new Promise((resolve) => drainWaiters.push(resolve));
+    endTurn();
+    await Promise.all(pendingCleanups);
+  })();
+  const timeout = new Promise((resolve) => setTimeout(resolve, 5000).unref());
+  Promise.race([cleanup, timeout]).then(() => {
+    child.stdin.end();
+    setTimeout(() => child.kill(), 5000).unref();
+  });
+}
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, shutDown);
 
 // Client -> server: advertise form elicitation so cua_repl asks instead of refusing, and add
 // turn metadata to tool calls.
@@ -150,12 +222,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     return send(child.stdin, { ...message, params: withTurnMetadata(message.params) });
   }
   forward(child.stdin, line);
-}).on("close", () => {
-  // End the child's stdin so it finishes in-flight work and exits (which ends the turn); kill it if it hangs.
-  clientClosed = true;
-  child.stdin.end();
-  setTimeout(() => child.kill(), 5000).unref();
-});
+}).on("close", shutDown);
 
 // Server -> client: answer approval requests here, pass everything else through.
 createInterface({ input: child.stdout }).on("line", (line) => {
@@ -163,6 +230,11 @@ createInterface({ input: child.stdout }).on("line", (line) => {
   const message = parseJson(line);
   if (message?.method === "elicitation/create" && message.id != null) {
     send(child.stdin, { jsonrpc: "2.0", id: message.id, result: { action: "accept", content: {} } });
+    return;
+  }
+  if (internalCalls.has(message?.id)) {
+    internalCalls.get(message.id)();
+    internalCalls.delete(message.id);
     return;
   }
   if (message?.id != null && message.method === undefined) callFinished(message.id);
