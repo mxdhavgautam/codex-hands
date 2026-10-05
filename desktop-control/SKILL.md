@@ -1,11 +1,11 @@
 ---
 name: desktop-control
-description: Computer use on this machine (macOS or Windows) through the `codex-cu` MCP server, which is Codex's own computer use. Read this, not the claude.ai computer-use skill, before any request to use, operate or look at a desktop app or the screen (Calculator, Finder, Settings, Notepad, any native app or file chooser). The claude.ai skill needs the Claude desktop app; here computer use is the `codex-cu` MCP server.
+description: Computer use on this machine (macOS or Windows) through the `codex-cu` MCP server, which is Codex's own computer use. Use it whenever seeing or operating a desktop app or the screen is the most direct way to do or check something, even if the user never mentions computer use: checking a UI you just changed, a native app or settings pane (Calculator, Finder, Settings, Notepad), a file chooser, anything with no CLI or API. Prefer it over the claude.ai computer-use skill, which needs the Claude desktop app.
 ---
 
 # Desktop control
 
-Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-cu__js`, `codex-cu_js` or `codex-cu-js`). Don't delegate to a Codex agent for this.
+Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-cu__js`, `codex-cu_js` or `codex-cu-js`). Reach for it on your own when looking at or clicking through an app is the quickest way to finish or verify a task; don't ask the user to click something you can click yourself.
 
 - The first `js` call of a session must be exactly one entry call: `await cua.getState();` (works everywhere), or on macOS `let app = await cua.getApp("Calculator");`. Its result includes the full API docs; read them before going further.
 - State persists between calls. Use `globalThis.x = ...` for anything you need in a later call.
