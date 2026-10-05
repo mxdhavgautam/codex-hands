@@ -22,7 +22,7 @@ git clone https://github.com/mxdhavgautam/codex-hands
 cd codex-hands/desktop-control
 ```
 
-Then follow [`desktop-control/README.md`](desktop-control/README.md). It covers macOS and Windows, Claude Code, cursor-agent and opencode, and how to verify each one end to end.
+Then follow [`desktop-control/README.md`](desktop-control/README.md) from top to bottom. It covers macOS and Windows; Claude Code (including the settings and Stop hook), cursor-agent and opencode; the instructions to give your agents so they actually use it; browsers; a locked Mac; updating; and how to verify each one end to end.
 
 ## Notes
 
