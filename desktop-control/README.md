@@ -3,6 +3,7 @@
 This folder gives Claude Code, Cursor's `cursor-agent` and opencode the same computer use that Codex has, on macOS and Windows. It contains:
 
 - `cu-mcp.mjs`: an MCP server (`codex-cu`) that runs the computer use engine the Codex app installs.
+- `turn-ended.mjs`: used by `cu-mcp.mjs` on macOS to tell the helper a task's turn ended, so a Mac it unlocked gets locked again.
 - `SKILL.md`: tells agents when and how to use it.
 - `README.md`: this file, for setup and debugging.
 
@@ -98,8 +99,9 @@ The Codex app installs a plugin at `~/.codex/plugins/cache/openai-bundled/unifie
    - `Computer Use was not approved to use <app>`, from headless Claude Code.
 
    Accepting everything is deliberate, so agents run without interruption. If you want prompts, don't use this proxy.
+4. It tags every tool call with Codex-style turn metadata (`_meta["x-codex-turn-metadata"]`, a JSON string with `session_id` and `turn_id`), where `session_id` is `<session id>/<turn number>`: the harness's session id where it exposes one to MCP servers (Claude Code's `CLAUDE_CODE_SESSION_ID`), a random one otherwise. The helper treats `session_id` as the thread and releases a thread's unlock without checking the turn, so a new thread id per turn keeps a late turn end from releasing the next turn's unlock. When the Mac is locked in a way that blocks Computer Use (for example a background wake with the display off), the helper only unlocks it for a request it can tie to a thread, and locks it again when that thread's turn ends. The proxy reports the turn end itself after 2 minutes with no tool call in flight (a cancelled call counts until `cua_repl` answers it) and when `cua_repl` exits, which it does once the client disconnects, by running `turn-ended.mjs` (next to it) under the Codex app's bundled node. That script sends `ComputerUseIPCCodexTurnEndedRequest` over the helper's socket (`~/Library/Group Containers/2DC432GLL2.com.openai.sky.CUAService/IPC/computeruse.sock`). The helper only answers a client whose parent process is signed by OpenAI, so the script relaunches itself once under the bundled node and sends from that copy. `SkyComputerUseClient turn-ended`, Codex's own notify hook, doesn't work from other harnesses: macOS refuses its AppleEvent while still exiting 0. If the proxy is killed outright it can't report the turn end. Without the metadata you get `The Mac is locked and this Computer Use request cannot be associated with a ChatGPT thread`.
 
-`tools/list` also shows `js_reset`, `js_add_node_module_dir` and `turn_ended`. `turn_ended` is a Codex hook target; ignore it. Codex caps `js` output at about 25k tokens, but that limit is applied by Codex, so other harnesses get the full output.
+`tools/list` also shows `js_reset`, `js_add_node_module_dir` and `turn_ended`. `turn_ended` is a Codex hook target that doesn't reach the macOS helper; ignore it. Codex caps `js` output at about 25k tokens, but that limit is applied by Codex, so other harnesses get the full output.
 
 ### macOS specifics
 
@@ -143,4 +145,5 @@ The Codex app installs a plugin at `~/.codex/plugins/cache/openai-bundled/unifie
 - After a Codex app update breaks something, compare the new `.mcp.json` with the env vars listed above. On Windows, the three changes are the likeliest thing to need updating. The `@oai/cua-repl` package's own `README.md` and `instructions/` folder, inside the engine directory, are the best reference.
 - If the agent gives the answer without a `codex-cu` `js` call, it either computed it itself or the server wasn't loaded. A cursor-agent without approval has even run `cu-mcp.mjs` through its shell instead. Check `mcp list`, then tell it to drive the app.
 - `failed to launch codex app-server: program not found` (Windows): the app's bundled `codex.exe` wasn't found. Check that `CODEX_CLI_PATH` in the plugin's `.mcp.json` points to an existing file; if not, open the Codex app to refresh it.
+- `The Mac is locked and ...` (macOS): on an ordinary lock screen Computer Use keeps working in the background, so this only appears when macOS can't serve it locked, such as a background wake with the display off. `cannot be associated with a ChatGPT thread` means the request had no turn metadata: an old `cu-mcp.mjs`, or something calling `cua_repl` directly. `automatic unlock could not unlock it` or `paused because physical input was detected` come from the helper's own unlock, which needs the locked-use setup in the Codex app; unlock manually in that case.
 - An empty window list (`list_windows()` returns `[]`) on Windows means the harness isn't running in the desktop session, for example because it was started over SSH.

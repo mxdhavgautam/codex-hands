@@ -5,7 +5,7 @@ description: Computer use on this machine (macOS or Windows) through the `codex-
 
 # Desktop control
 
-Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-cu__js`, `codex-cu_js` or `codex-cu-js`). Reach for it on your own when looking at or clicking through an app is the quickest way to finish or verify a task; don't ask the user to click something you can click yourself.
+Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-cu__js`, `codex-cu_js` or `codex-cu-js`). Reach for it on your own when looking at or clicking through an app is the quickest way to finish or verify a task; don't ask the user to click something you can click yourself. If your harness has its own built-in computer use, use that instead. Both work while the Mac is locked.
 
 - The first `js` call of a session must be exactly one entry call: `await cua.getState();` (works everywhere), or on macOS `let app = await cua.getApp("Calculator");`. Its result includes the full API docs; read them before going further.
 - State persists between calls. Use `globalThis.x = ...` for anything you need in a later call.
