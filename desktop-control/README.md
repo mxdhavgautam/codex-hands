@@ -112,13 +112,14 @@ Installing the server and skill isn't enough: agents rarely reach for computer u
 ```markdown
 # Computer use
 
-- You can see and operate the desktop on this machine, even while the Mac is locked. If your harness has built-in computer use, use that; otherwise use the `desktop-control` skill and its `codex-cu` MCP server. Use it without being asked whenever it's the most direct way to get something done or checked: looking at an app or a UI you just changed, a native app or settings pane, a file chooser, or anything with no CLI or API. Don't tell the user to click something you can click yourself.
+- You can see and operate the desktop on this machine, even while the Mac is locked. If your harness has built-in computer use, use that; otherwise use the `desktop-control` skill and its `codex-cu` MCP server.
+- Decide on your own, task by task, whether computer use fits; don't wait to be asked, and don't default to it or away from it. Think about what the task is really about. Files, code, commands and data usually go faster and leave a better record through the shell, CLIs, APIs and fetch, so opening an app or a tab for those is waste. When the task is about what's on screen or what only a UI exposes (a native app or settings pane, a file chooser, a signed-in site with no API, how a UI you changed actually looks and behaves, or a GUI where the CLI route would be a fragile workaround), use computer use straight away. When both would work, pick the one that's more reliable and easier to verify here, and mix them freely. Don't tell the user to click something you can click yourself.
 - Don't use computer-use skills that need a separate desktop app running.
-- The same computer use drives Chromium browsers that have OpenAI's ChatGPT extension, in the background with the user's sign-ins. Prefer it for web pages in those browsers. Browsers can all report the name "Chrome", so pick one by its `extensionInstanceId` and open tabs straight at a URL. Known browsers: <name> `<extensionInstanceId>`, ...
+- The same computer use drives Chromium browsers that have OpenAI's ChatGPT extension, in the background with the user's sign-ins. Use it when a page needs those sign-ins or you need to see or use it as a person would; for just reading public content, a fetch is usually enough. Browsers can all report the name "Chrome", so pick one by its `extensionInstanceId` and open tabs straight at a URL. Known browsers: <name> `<extensionInstanceId>`, ...
 - Still ask before destructive, financial or sending actions.
 ```
 
-Fill in the browser list after "Browsers" below, or drop that line if you don't use browsers. Keep "built-in first": a Codex agent that follows a plain "use `desktop-control`" rule runs this proxy instead of its native computer use and loses Codex's own thread handling.
+Fill in the browser list after "Browsers" below, or drop that line if you don't use browsers. Keep the judgment line as it is. Without "don't wait to be asked" agents rarely use computer use; a flat "prefer it" makes them open apps and tabs for things a shell command does faster, and a flat "only as a last resort" makes them skip it where it's the right tool. Keep "built-in first" too: a Codex agent that follows a plain "use `desktop-control`" rule runs this proxy instead of its native computer use and loses Codex's own thread handling.
 
 ### Check it
 

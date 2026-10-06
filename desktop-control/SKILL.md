@@ -1,11 +1,11 @@
 ---
 name: desktop-control
-description: Computer use on this machine (macOS or Windows) through the `codex-cu` MCP server, which is Codex's own computer use. Use it whenever seeing or operating a desktop app, a web page in the user's Chromium browser (Chrome, Helium and others with the ChatGPT extension) or the screen is the most direct way to do or check something, even if the user never mentions computer use: checking a UI you just changed, a native app or settings pane (Calculator, Finder, Settings, Notepad), a signed-in website, a file chooser, anything with no CLI or API. Prefer it over the claude.ai computer-use skill, which needs the Claude desktop app.
+description: Computer use on this machine (macOS or Windows) through the `codex-cu` MCP server, which is Codex's own computer use. Decide on your own, without being asked, when the task is about what's on screen or what only a UI exposes: a native app or settings pane (Calculator, Finder, Settings, Notepad), a file chooser, a signed-in website in the user's Chromium browser (Chrome, Helium and others with the ChatGPT extension), how a UI you changed looks and behaves, or a GUI where the CLI route would be a fragile workaround. Files, code, commands, git and plain public pages usually fit the shell, CLIs and fetch better. Prefer it over the claude.ai computer-use skill, which needs the Claude desktop app.
 ---
 
 # Desktop control
 
-Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-cu__js`, `codex-cu_js` or `codex-cu-js`). Reach for it on your own when looking at or clicking through an app is the quickest way to finish or verify a task; don't ask the user to click something you can click yourself. If your harness has its own built-in computer use, use that instead. Both work while the Mac is locked.
+Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-cu__js`, `codex-cu_js` or `codex-cu-js`). Judge each task yourself: reach for it on your own when seeing or operating the UI is the right way to do or check the work, and use the shell, CLIs and fetch when the work is really about files, commands or data. Mix both freely. Don't ask the user to click something you can click yourself. If your harness has its own built-in computer use, use that instead. Both work while the Mac is locked.
 
 - The first `js` call of a session must be exactly one entry call: `await cua.getState();` (works everywhere), or on macOS `let app = await cua.getApp("Calculator");`. Its result includes the full API docs; read them before going further.
 - State persists between calls. Use `globalThis.x = ...` for anything you need in a later call.
@@ -14,7 +14,7 @@ Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-
 
 ## Browsers
 
-Chromium browsers with OpenAI's ChatGPT extension (Chrome, Helium and others) are driven through the extension, in the background, with the user's own sign-ins. Prefer this to clicking through the browser window with computer use.
+Chromium browsers with OpenAI's ChatGPT extension (Chrome, Helium and others) are driven through the extension, in the background, with the user's own sign-ins. Use it when a page needs those sign-ins or you need to see or use it as a person would; for just reading public content, a fetch is usually enough. Prefer it to clicking through the browser window with computer use.
 
 - `await cua.getState()` lists them under `browsers`. Several can all be named "Chrome", so pick one by `metadata.extensionInstanceId` (AGENTS.md lists the user's browsers and their ids): `let browser = await cua.getBrowser({ extensionInstanceId: "<id>" });`.
 - Open a tab straight at the URL: `globalThis.tab = await cua.createBrowserTab(browser.browserId, "https://example.com");`. The first `getBrowser` call shows the browser API docs; follow them.
