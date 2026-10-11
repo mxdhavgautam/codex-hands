@@ -6,6 +6,7 @@ This folder gives Claude Code, Cursor's `cursor-agent` and opencode the same com
 - `turn-ended.mjs`: used by `cu-mcp.mjs` on macOS to tell the helper a task's turn ended, so a Mac it unlocked gets locked again.
 - `turn-end-hook.mjs`: a Stop hook for Claude Code that tells that session's `cu-mcp.mjs` the agent's turn ended (releases its browser tabs, lets the Mac lock again).
 - `SKILL.md`: tells agents when and how to use it.
+- `WINDOWS.md`: what agents do differently on Windows; `SKILL.md` sends them there.
 - `README.md`: this file, for setup and debugging.
 
 Codex itself already has computer use built in and needs nothing from here.
@@ -210,7 +211,7 @@ The Codex app installs a plugin at `~/.codex/plugins/cache/openai-bundled/unifie
   Save it as `%USERPROFILE%\cu-test.cmd`, then run `schtasks /Create /TN cu-test /TR "%USERPROFILE%\cu-test.cmd" /SC ONCE /ST 23:59 /RL LIMITED /IT /F` and `schtasks /Run /TN cu-test`. Wait until `cu-test-done.txt` appears (or `schtasks /Query /TN cu-test` shows `Ready`), then read `cu-test.txt`. The marker gets its own file because the server's processes can hold `cu-test.txt` open for a few seconds after the harness exits. Clean up with `schtasks /Delete /TN cu-test /F` and delete the two text files.
   To stop a runaway test, `schtasks /End /TN cu-test` isn't enough: it ends the batch file but leaves the harness running. Also stop that harness process, and only that one, since `Stop-Process -Name claude` would end every Claude session. These are PowerShell commands, so run `exit` first if you're still in `cmd`. Find it with `Get-CimInstance Win32_Process -Filter "Name like 'claude%' or Name like 'opencode%' or Name like 'node%'" | Select ProcessId, ParentProcessId, CommandLine` (it's the one whose command line has your test prompt), then `Stop-Process -Id <id>`.
 - Input brings the target window to the front and moves the cursor.
-- Some packaged apps, Calculator included, expose no accessibility tree. Agents fall back to screenshots and coordinate clicks (see `SKILL.md`).
+- Some packaged apps, Calculator included, expose no accessibility tree. Agents fall back to screenshots and coordinate clicks (see `WINDOWS.md`).
 
 ## Debugging
 

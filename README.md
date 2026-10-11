@@ -10,6 +10,7 @@ desktop-control/
   turn-ended.mjs     tells the macOS helper a turn ended, so it can lock the Mac again
   turn-end-hook.mjs  Claude Code Stop hook: ends that session's turn, releasing its tabs
   SKILL.md           agent instructions
+  WINDOWS.md         what agents do differently on Windows
   README.md          requirements, install, checks, how it works, debugging
 ```
 
