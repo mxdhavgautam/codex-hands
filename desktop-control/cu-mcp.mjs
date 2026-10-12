@@ -8,12 +8,12 @@
 // cua_repl server with the plugin's env, and proxies MCP messages both ways. cua_repl asks
 // the client to approve every app and action through MCP form elicitation; most harnesses
 // can't answer that headlessly, so this proxy accepts every request itself. It also tags tool
-// calls with Codex-style thread and turn metadata, so the helper can unlock a locked Mac for them.
+// calls with Codex-style thread and turn metadata, which browser control needs.
 //
 // Needs the Codex app installed (macOS: ChatGPT.app, Windows: Codex) but not running. On
 // Windows it must be spawned from the interactive desktop session, not from SSH.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
@@ -88,9 +88,10 @@ const forward = (stream, line) => stream.write(`${line}\n`);
 const send = (stream, message) => stream.write(`${JSON.stringify(message)}\n`);
 
 // Codex tags every tool call with its thread and turn, and tells cua_repl and the computer use
-// helper when a turn ends. The helper unlocks a locked Mac for a turn and locks it again at its end
-// (told by turn-ended.mjs, under the bundled node, which it trusts); the browser side releases the
-// turn's tabs (told through cua_repl's hidden turn_ended tool). This proxy ends a turn when:
+// helper when a turn ends. The helper locks a Mac it unlocked for a turn again at its end (told by
+// turn-ended.mjs, under the bundled node, which it trusts), though it only unlocks for the ChatGPT
+// app's own requests, never this proxy's; the browser side releases the turn's tabs (told through
+// cua_repl's hidden turn_ended tool). This proxy ends a turn when:
 // - the harness's Stop hook runs turn-end-hook.mjs, which connects to this session's control
 //   socket (Claude Code; the precise signal);
 // - no tool call has been in flight for TURN_IDLE_MS, for harnesses without a hook (off once a
@@ -143,7 +144,7 @@ const endTurn = () => {
   return browserCleanup;
 };
 
-// The idle clock only runs while no tool call is in flight, so a long call never loses its unlock.
+// The idle clock only runs while no tool call is in flight, so a long call never loses its tabs.
 // A cancelled call stays in flight until cua_repl answers it, since it may still be running.
 const callStarted = (id) => {
   turnActive = true;
@@ -208,6 +209,38 @@ function shutDown() {
 }
 for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, shutDown);
 
+// While the screen is locked, macOS gives accessibility clients the app itself in place of its
+// windows. The helper then fails with cgWindowNotFound, or walks that looping tree until the
+// request times out and carries on walking afterwards, holding up later calls and keeping the
+// target app busy. It only unlocks the Mac for requests whose process chain leads back to the
+// ChatGPT app, which a proxy's never does. So a call that fails this way on a locked screen gets
+// the reason added to its result, and a helper left walking is stopped; the next call restarts it.
+const LOCKED_FAILURE = /Sky Computer Use request timed out|cgWindowNotFound/;
+const LOCKED_NOTE =
+  "The Mac's screen is locked. macOS hides app windows from computer use while it is locked, so a " +
+  "call that reads or drives a native app fails until the user unlocks the Mac: don't retry it, " +
+  "say so and carry on with what doesn't need an app window. Listing apps and working in browser " +
+  "tabs (cua.getBrowser, cua.createBrowserTab) still work while locked; if this call was one of " +
+  "those, retry it once.";
+const screenLocked = () =>
+  /"CGSSessionScreenIsLocked"\s*=\s*Yes/.test(spawnSync("ioreg", ["-n", "Root", "-d1"], { encoding: "utf8" }).stdout ?? "");
+
+// Adds LOCKED_NOTE to a tool result that failed because the screen is locked; true if it did.
+const explainLockedFailure = (message) => {
+  if (process.platform !== "darwin") return false;
+  const content = message.result?.content;
+  if (!Array.isArray(content)) return false;
+  const failure = content.map((item) => LOCKED_FAILURE.exec(item?.text ?? "")?.[0]).find(Boolean);
+  if (!failure || !screenLocked()) return false;
+  // Gone before the result goes out (waiting up to 2 s), so the agent's next call starts a fresh one.
+  if (failure !== "cgWindowNotFound") {
+    spawnSync("pkill", ["-x", "SkyComputerUseService"]);
+    for (let i = 0; i < 20 && spawnSync("pgrep", ["-x", "SkyComputerUseService"]).status === 0; i++) spawnSync("sleep", ["0.1"]);
+  }
+  content.push({ type: "text", text: LOCKED_NOTE });
+  return true;
+};
+
 // Client -> server: advertise form elicitation so cua_repl asks instead of refusing, and add
 // turn metadata to tool calls.
 createInterface({ input: process.stdin }).on("line", (line) => {
@@ -237,6 +270,9 @@ createInterface({ input: child.stdout }).on("line", (line) => {
     internalCalls.delete(message.id);
     return;
   }
-  if (message?.id != null && message.method === undefined) callFinished(message.id);
+  if (message?.id != null && message.method === undefined) {
+    callFinished(message.id);
+    if (explainLockedFailure(message)) return send(process.stdout, message);
+  }
   forward(process.stdout, line);
 });

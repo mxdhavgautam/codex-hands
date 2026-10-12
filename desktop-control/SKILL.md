@@ -5,13 +5,14 @@ description: Computer use on this machine through the `codex-cu` MCP server. Rea
 
 # Desktop control
 
-Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-cu__js`, `codex-cu_js` or `codex-cu-js`). Mix it freely with the shell, CLIs and fetch, and click things yourself rather than asking the user to. If your harness has its own built-in computer use, use that instead. Both work while the Mac is locked.
+Use the `codex-cu` MCP server's `js` tool (your harness may name it `mcp__codex-cu__js`, `codex-cu_js` or `codex-cu-js`). Mix it freely with the shell, CLIs and fetch, and click things yourself rather than asking the user to. If your harness has its own built-in computer use, use that instead.
 
 - The first `js` call of a session must be exactly one entry call: `await cua.getState();` (works everywhere), or on macOS `let app = await cua.getApp("Calculator");`. Its result includes the full API docs; read them before going further.
 - State persists between calls. Use `globalThis.x = ...` for anything you need in a later call.
 - Approvals are accepted automatically. Still confirm with the user before destructive, financial or sending actions.
 - Reuse an app's existing window instead of launching it again (every launch on Windows opens another window). Close windows you opened when the task is done.
 - After three failed attempts at the same step, stop and tell the user.
+- While the Mac is locked, listing apps and browser tabs still work, but app windows can't be read or driven until the user unlocks it. A call that fails for that reason says so; don't retry it, tell the user.
 
 ## Browsers
 
